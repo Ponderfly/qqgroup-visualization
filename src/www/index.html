@@ -4,9 +4,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link rel="stylesheet" href="./css/bulma.css" />
     <title></title>
 </head>
 <body>
-    
+    <form>
+        <select name="" id="">
+            <option value="qq">查QQ号</option>
+            <option value="group">查群号</option>
+        </select>
+        <input type="text" placeholder="请输入需查找的号码" />
+        <input type="button" value="查询" />
+    </form>
+    <div id="3d-graph"></div>
+    <script src="./js/3d-force-graph.js"></script>
+    <script>
+        // Random tree
+        const N = 300;
+        const gData = {
+            nodes: [...Array(N).keys()].map(i => ({ id: i })),
+            links: [...Array(N).keys()]
+            .filter(id => id)
+            .map(id => ({
+                source: id,
+                target: Math.round(Math.random() * (id-1))
+            }))
+        };
+        const Graph = ForceGraph3D()
+            (document.getElementById('3d-graph'))
+            .graphData(gData);
+    </script>
 </body>
 </html>
