@@ -1,6 +1,7 @@
 
 const Koa = require("koa");
 const KoaRouter = require("koa-router");
+const KoaStatic = require("koa-static");
 const Koa2Cors = require("koa2-cors");
 const MSSQL = require("mssql");
 
@@ -31,6 +32,7 @@ const serverPort = 1239;
             allowHeaders: ['Content-Type', 'Authorization', 'Accept'],
         });
 
+        //QQ查询接口
         router.get('/qq/:id', async (ctx, next) => {
             let qqNum = Number(ctx.params.id);
             let result = await pool.request()
@@ -38,6 +40,7 @@ const serverPort = 1239;
                             .execute('queryByQQNum');
             ctx.body = result.recordsets;
         });
+        //群查询接口（比较慢）
         router.get('/group/:id', async (ctx, next) => {
             let qunNum = Number(ctx.params.id);
             let result = await pool.request()
@@ -46,7 +49,7 @@ const serverPort = 1239;
             ctx.body = result.recordsets;
         });
 
-        app.use(cors).use(router.routes()).use(router.allowedMethods());
+        app.use(cors).use(KoaStatic(__dirname + "/www")).use(router.routes()).use(router.allowedMethods());
 
         app.listen(serverPort);
         console.log("服务已经启动，工作在 " + serverPort + " 端口...");
