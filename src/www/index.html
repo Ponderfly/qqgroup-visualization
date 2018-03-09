@@ -4,42 +4,254 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <link rel="stylesheet" href="./css/bulma.css" />
+    <link rel="stylesheet" href="./css/bootstrap.css" />
     <style>
         html, body {
+            margin: 0px;
+            padding: 0px;
             width: 100%;
             height: 100%;
+        }
+        .page {
+            position: fixed;
+            width: 100%;
+            height: 100%;
+        }
+        .top {
+            width: 100%;
             padding: 10px;
         }
+        .content {
+            width: 100%;
+            height: 100%;
+            background-color: pink;
+        }
     </style>
-    <title></title>
+    <title>QQ群关系可视化查询</title>
 </head>
 <body>
-    <form>
-        <select name="" id="">
-            <option value="qq">查QQ号</option>
-            <option value="group">查群号</option>
-        </select>
-        <input type="text" placeholder="请输入需查找的号码" />
-        <input type="button" value="查询" />
-    </form>
-    <div id="3d-graph"></div>
+    <div class="page">
+        <div class="top">
+            <form class="form-inline">
+                <div class="form-group">
+                    <select class="form-control">
+                        <option value="qq">查QQ号</option>
+                        <option value="group">查群号</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <input class="form-control" type="text" placeholder="请输入需查找的号码" />
+                </div>
+                <input type="button" class="btn btn-primary" value="查询" />
+            </form>
+        </div>
+        <div class="content">
+        </div>
+    </div>
+    <script src="./js/vue.js"></script>
+    <script src="./js/axios.js"></script>
+    <script src="./js/three.js"></script>
     <script src="./js/3d-force-graph.js"></script>
+
+
     <script>
-        // Random tree
-        const N = 300;
-        const gData = {
-            nodes: [...Array(N).keys()].map(i => ({ id: i })),
-            links: [...Array(N).keys()]
-            .filter(id => id)
-            .map(id => ({
-                source: id,
-                target: Math.round(Math.random() * (id-1))
-            }))
-        };
-        const Graph = ForceGraph3D()
-            (document.getElementById('3d-graph'))
-            .graphData(gData);
+        //绘制图像到canvas
+        function drawToCanvas (img, canvas) {
+            let ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, (ballTextureHeight - headSize) / 2, headSize, headSize);
+            ctx.drawImage(img, ballTextureWidth / 2, (ballTextureHeight - headSize) / 2, headSize, headSize);          
+        }
+        //根据url获取Image对象，返回一个Promise
+        function getImage (url, timeout) {
+            timeout = timeout || 60000;
+            return new Promise((resolve, reject) => {
+                try {
+                    let imgObj = new Image();
+                    imgObj.src = url;
+                    imgObj.crossOrigin = "";
+
+                    let id = setTimeout(() => {
+                        reject();
+                    }, timeout);
+                    
+                    imgObj.onload = () => {
+                        clearTimeout(id);
+                        resolve(imgObj);
+                    };
+                    
+                    imgObj.onerror = () => {
+                        reject();
+                    };
+                }
+                catch (e) {
+                    reject();
+                }
+            });   
+        }
+        //获取访问QQ头像的接口url
+        function getQQHeadUrl (qqNum) {
+            //return "https://qlogo2.store.qq.com/qzone/" + qqNum + "/" + qqNum + "/100";
+            return "http://q2.qlogo.cn/headimg_dl?dst_uin=" + qqNum + "&spec=100";
+        }
+        //获取QQ头像
+        function getQQHead (qqNum) {
+            return getImage(getQQHeadUrl(qqNum));
+        }
+        //根据传入的QQ账号列表生成一个Promise异步任务获取对应QQ头像
+        function startGetQQHeadTask (qqNumList) {
+            return new Promise(async (resolve, reject) => {
+                let taskArray = [];
+                for (let i = 0; i < qqNumList.length; ++i) {
+                    let curQQNum = qqNumList[i];
+                    let curQQHeadImg;
+                    try {
+                        curQQHeadImg = await getQQHead(curQQNum);
+                    }
+                    catch (e) {
+                        curQQHeadImg = null;
+                    }
+                    taskArray[i] = {
+                        qqNum: curQQNum,
+                        headImg: curQQHeadImg
+                    };
+                }
+                resolve(taskArray);
+            });
+        }
+        //对列表按索引分组，传入列表和分组个数
+        function batch (list, num) {
+            let batchList = [];
+            for (let i = 0; i < num; ++i) {
+                batchList[i] = list.filter((item, index) => {
+                    if (index % num == i) {
+                        return true;
+                    }
+                    else {
+                        return false;
+                    }
+                });
+            }
+            return batchList;
+        } 
+        //根据QQ账号列表获取所有头像
+        function getAllQQHead (qqNumList, concurrencyNum) {
+            return new Promise((resolve, reject) => {
+                let rtvList = [];
+                let batchList = batch(qqNumList, concurrencyNum);
+                let count = 0;
+                for (let i = 0; i < batchList.length; ++i) {
+                    let dstTaskList = batchList[i];
+                    startGetQQHeadTask(dstTaskList).then((list) => {
+                        rtvList = rtvList.concat(list);
+                        count++;
+                        if (count >= concurrencyNum) {
+                            resolve(rtvList);
+                        }
+                    });
+                }   
+            });  
+        }    
+    </script>
+
+
+
+    <script>
+        //球体贴图宽
+        const ballTextureWidth = 256;
+        //球体贴图高
+        const ballTextureHeight = 128;
+        //头像尺寸
+        const headSize = 128;
+
+
+        async function queryByQQ (qqNum) {
+            let response = await axios.get("/qq/" + qqNum);
+            let qqNodes = response.data[0];
+
+
+            let qqNumList = qqNodes.map((item) => {
+                return item.ID;
+            });
+            
+            let allQQHead = await getAllQQHead(qqNumList, 100);
+            let qqHeadMap = new Map();
+            for (let item of allQQHead) {
+                qqHeadMap.set(item.qqNum, item.headImg);
+            }
+            for (let item of qqNodes) {
+                item.headImg = qqHeadMap.get(item.ID);
+            }
+            
+            console.log(qqNodes);
+            
+            let groupNodes = response.data[1];
+            let links = response.data[2];
+
+            let nodes = qqNodes.concat(groupNodes);
+
+            return {
+                nodes: nodes,
+                links: links
+            };
+        }
+
+        //根据QQ以及坐标位置信息生成球体对象
+        function createBallMesh (img) {
+            let canvas = document.createElement("canvas");
+            canvas.width = ballTextureWidth;
+            canvas.height = ballTextureHeight;
+
+            let ctx = canvas.getContext("2d");
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, ballTextureWidth, ballTextureHeight);
+
+            if (img) {
+                drawToCanvas(img, canvas);
+            }
+
+            let texture = new THREE.Texture(canvas);
+            //新建标准网孔材质
+            let ballMat = new THREE.MeshStandardMaterial( {
+                color: "white",
+                roughness: 0.4,
+                metalness: 0.4,
+                map: texture
+            });
+            texture.needsUpdate = true;
+
+            let ballGeometry = new THREE.SphereGeometry(3, 32, 32);
+            let ballMesh = new THREE.Mesh(ballGeometry, ballMat);
+            ballMesh.rotation.y = Math.PI;
+
+            texture = undefined;
+            canvas = undefined;
+
+            return ballMesh;
+        }
+
+
+        (async () => {
+            let data = await queryByQQ(357811718);
+            
+
+            const graph = ForceGraph3D();
+            let dstArea = document.getElementsByClassName("content")[0];
+            let area3d = graph(dstArea);
+            area3d.nodeId("ID");
+            area3d.linkSource("QQNum");
+            area3d.linkTarget("GroupNum");
+            area3d.linkLabel("Nick");
+            area3d.nodeThreeObject((node) => {
+                if (node.Type == "Member") {
+                    console.log(111);
+                    return createBallMesh (node.headImg);
+                }
+                else {
+                    return createBallMesh();
+                }
+            });
+            area3d.graphData(data);
+        })();
     </script>
 </body>
 </html>
